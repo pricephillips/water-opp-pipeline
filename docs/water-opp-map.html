@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Water Tension × Development Opposition — THG</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300..700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:        #0c0e14;
+  --surface:   #12151e;
+  --surface-2: #181c28;
+  --border:    rgba(255,255,255,0.07);
+  --text:      #e2e8f0;
+  --muted:     #8892a4;
+  --faint:     #4a5568;
+  --accent:    #38bdf8;
+  --accent-dim: rgba(56,189,248,0.12);
+  --green:     #4ade80;
+  --red:       #f87171;
+  --orange:    #fb923c;
+  --purple:    #c084fc;
+  --yellow:    #fbbf24;
+  --radius:    6px;
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; font-family: var(--font); background: var(--bg); color: var(--text); overflow: hidden; }
+body { display: flex; flex-direction: column; }
+
+/* ── Header ── */
+#header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 0 16px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  z-index: 10;
+}
+.logo-mark {
+  width: 26px; height: 26px;
+  background: linear-gradient(135deg, #0ea5e9 0%, #6366f1 100%);
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; color: #fff;
+  flex-shrink: 0;
+}
+.header-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.header-sub   { font-size: 11px; color: var(--muted); margin-left: 2px; }
+.spacer { flex: 1; }
+
+#freshness-pill {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 20px; padding: 3px 10px 3px 7px;
+  font-size: 11px; color: var(--muted);
+}
+#freshness-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--faint); flex-shrink: 0; transition: background 0.3s;
+}
+#freshness-dot.live  { background: var(--green); box-shadow: 0 0 4px rgba(74,222,128,0.5); }
+#freshness-dot.seed  { background: var(--yellow); }
+#freshness-dot.error { background: var(--red); }
+
+#refresh-btn {
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--muted); font-size: 11px; padding: 3px 9px;
+  border-radius: 4px; cursor: pointer; display: flex; align-items: center; gap: 4px;
+  transition: all 0.15s;
+}
+#refresh-btn:hover  { border-color: var(--accent); color: var(--accent); }
+#refresh-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+#refresh-btn svg { width: 11px; height: 11px; }
+#countdown { font-size: 10px; color: var(--faint); min-width: 40px; }
+
+/* ── Layout ── */
+#main { display: flex; flex: 1; overflow: hidden; }
+#map  { flex: 1; }
+
+/* ── Sidebar ── */
+#sidebar {
+  width: 288px; background: var(--surface); border-left: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;
+}
+
+/* ── Controls ── */
+#controls {
+  padding: 10px 12px; border-bottom: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 7px;
+}
+.ctrl-row { display: flex; align-items: center; gap: 8px; }
+.ctrl-label {
+  font-size: 10px; color: var(--muted); width: 56px; flex-shrink: 0;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+select {
+  flex: 1; background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+  font-size: 11px; padding: 4px 7px; border-radius: var(--radius); cursor: pointer;
+  -webkit-appearance: none; font-family: var(--font); transition: border-color 0.15s;
+}
+select:hover, select:focus { border-color: rgba(255,255,255,0.2); outline: none; }
+
+.toggle-group { display: flex; gap: 4px; flex-wrap: wrap; }
+.toggle-btn {
+  background: var(--surface-2); border: 1px solid var(--border); color: var(--muted);
+  font-size: 10px; padding: 3px 8px; border-radius: var(--radius); cursor: pointer;
+  transition: all 0.15s; white-space: nowrap;
+}
+.toggle-btn:hover  { border-color: rgba(255,255,255,0.2); color: var(--text); }
+.toggle-btn.active { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+
+/* Source quality bar */
+#source-bar {
+  display: flex; gap: 3px; align-items: center; font-size: 10px; color: var(--faint);
+  padding: 6px 12px; border-bottom: 1px solid var(--border);
+}
+.src-seg {
+  height: 4px; border-radius: 2px; flex: 1; background: var(--faint); transition: background 0.3s;
+}
+.src-seg.active { background: var(--green); }
+.src-seg.seed   { background: var(--yellow); }
+.src-lbl { min-width: 28px; font-size: 9px; text-align: center; }
+
+/* ── Info Panel ── */
+#info-panel { flex: 1; overflow-y: auto; padding: 12px; scroll-behavior: smooth; }
+#info-panel::-webkit-scrollbar { width: 3px; }
+#info-panel::-webkit-scrollbar-thumb { background: var(--faint); border-radius: 2px; }
+
+.placeholder { color: var(--faint); font-size: 12px; text-align: center; margin-top: 48px; line-height: 2; }
+.placeholder .icon { font-size: 26px; display: block; margin-bottom: 8px; }
+
+.county-hdr     { margin-bottom: 10px; }
+.county-name    { font-size: 15px; font-weight: 600; }
+.county-sub     { font-size: 11px; color: var(--muted); }
+.biv-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 20px; margin: 6px 0;
+  font-size: 11px; font-weight: 500;
+}
+
+.section { margin-bottom: 14px; }
+.section-title {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--faint); margin-bottom: 6px; padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+.data-row {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 11px; color: var(--muted); margin-bottom: 3px;
+}
+.data-val { color: var(--text); font-size: 11px; font-variant-numeric: tabular-nums; }
+
+.bar-row { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
+.bar-label { font-size: 10px; color: var(--muted); width: 76px; flex-shrink: 0; line-height: 1.3; }
+.bar-wrap  { flex: 1; height: 5px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
+.bar-fill  { height: 100%; border-radius: 3px; transition: width 0.4s cubic-bezier(0.16,1,0.3,1); }
+.bar-val   { font-size: 10px; color: var(--text); width: 28px; text-align: right; font-variant-numeric: tabular-nums; }
+
+.residual-callout {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 7px 9px;
+  font-size: 10px; color: var(--muted); line-height: 1.5; margin-top: 4px;
+}
+
+/* ── Legend ── */
+#legend { padding: 8px 12px 10px; border-top: 1px solid var(--border); }
+.legend-title { font-size: 9px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--faint); margin-bottom: 7px; }
+
+.biv-grid-wrap { display: flex; gap: 6px; align-items: flex-end; }
+.biv-y-label   { font-size: 8px; color: var(--faint); writing-mode: vertical-rl; transform: rotate(180deg); margin-bottom: 3px; }
+.biv-grid { display: grid; grid-template-columns: repeat(3, 18px); grid-template-rows: repeat(3, 18px); gap: 2px; }
+.biv-cell { border-radius: 2px; }
+.biv-x-labels { display: flex; justify-content: space-between; font-size: 8px; color: var(--faint); margin-top: 3px; width: 58px; }
+.biv-quad-list { display: flex; flex-direction: column; gap: 3px; margin-top: 8px; }
+
+.leg-item   { display: flex; align-items: center; gap: 7px; font-size: 10px; color: var(--muted); }
+.leg-swatch { width: 11px; height: 11px; border-radius: 2px; flex-shrink: 0; }
+
+/* ── Stats bar ── */
+#stats-bar {
+  padding: 5px 12px; border-top: 1px solid var(--border);
+  display: flex; gap: 12px; font-size: 10px; color: var(--faint);
+  flex-wrap: wrap; background: var(--bg);
+}
+#stats-bar strong { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* ── Leaflet overrides ── */
+.leaflet-container { background: #0c0e14; }
+.leaflet-control-zoom { border: 1px solid var(--border) !important; }
+.leaflet-control-zoom a {
+  background: var(--surface) !important; color: var(--muted) !important;
+  border-color: var(--border) !important; font-size: 16px !important;
+}
+.leaflet-control-zoom a:hover { background: var(--surface-2) !important; color: var(--text) !important; }
+.leaflet-control-attribution { background: rgba(12,14,20,0.7) !important; color: var(--faint) !important; font-size: 9px !important; }
+.leaflet-control-attribution a { color: var(--faint) !important; }
+
+/* ── Loading overlay ── */
+#loading-overlay {
+  position: fixed; inset: 0; background: rgba(12,14,20,0.85);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000; backdrop-filter: blur(4px); transition: opacity 0.4s;
+}
+.loading-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 10px; padding: 24px 32px; text-align: center; min-width: 220px;
+}
+.loading-spinner {
+  width: 28px; height: 28px; border: 2px solid var(--border);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin 0.8s linear infinite; margin: 0 auto 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { font-size: 13px; color: var(--text); margin-bottom: 4px; }
+.loading-sub  { font-size: 11px; color: var(--muted); }
+
+/* ── Tooltip ── */
+.county-tooltip {
+  background: var(--surface) !important; border: 1px solid var(--border) !important;
+  border-radius: var(--radius) !important; color: var(--text) !important;
+  font-size: 11px !important; padding: 5px 8px !important;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4) !important; white-space: nowrap;
+}
+</style>
+</head>
+<body>
+
+<div id="loading-overlay">
+  <div class="loading-card">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">Loading water tension data</div>
+    <div class="loading-sub" id="loading-status">Fetching county data…</div>
+  </div>
+</div>
+
+<div id="header">
+  <div style="display:flex;align-items:center;gap:8px;">
+    <div class="logo-mark">W⟂</div>
+    <div>
+      <div class="header-title">Water Tension × Development Opposition</div>
+      <span class="header-sub">Supply/demand stress as causal driver — THG Research</span>
+    </div>
+  </div>
+  <div class="spacer"></div>
+  <span id="countdown"></span>
+  <button id="refresh-btn" onclick="toggleAutoRefresh()" title="Auto-refresh synced to USDM Tuesday releases">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M13.5 8A5.5 5.5 0 1 1 8 2.5" stroke-linecap="round"/>
+      <polyline points="11,1 14,4 11,7" fill="none"/>
+    </svg>
+    Auto-refresh
+  </button>
+  <div id="freshness-pill">
+    <div id="freshness-dot"></div>
+    <span id="freshness-text">Loading…</span>
+  </div>
+</div>
+
+<div id="main">
+  <div id="map"></div>
+
+  <div id="sidebar">
+    <div id="controls">
+      <div class="ctrl-row">
+        <span class="ctrl-label">Layer</span>
+        <select id="layer-select" onchange="setLayer(this.value)">
+          <option value="bivariate">Bivariate (WTI × Opposition)</option>
+          <option value="wti">Water Tension Index</option>
+          <option value="opp_rate">Opposition Rate</option>
+          <option value="residual">Model Residuals</option>
+          <option value="supply">Supply Deficit</option>
+          <option value="demand">Demand Pressure</option>
+          <option value="seasonal">Seasonal Pinch</option>
+        </select>
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-label">Highlight</span>
+        <div class="toggle-group">
+          <button class="toggle-btn" id="btn-water-driven" onclick="toggleHL('water_driven')">Water-driven</button>
+          <button class="toggle-btn" id="btn-latent"       onclick="toggleHL('latent_risk')">Latent risk</button>
+          <button class="toggle-btn" id="btn-other"        onclick="toggleHL('other_drivers')">Other drivers</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="source-bar">
+      <span class="src-lbl" style="text-align:left;color:var(--faint)">Sources</span>
+      <div class="src-seg" id="src-wri"  title="WRI Aqueduct 4.0 — baseline water stress"></div>
+      <div class="src-seg" id="src-usgs" title="USGS — groundwater + streamflow"></div>
+      <div class="src-seg" id="src-usdm" title="USDM — drought monitor (live weekly)"></div>
+      <div class="src-seg" id="src-usbr" title="USBR — reservoir storage (western US)"></div>
+      <span class="src-lbl" id="src-completeness" style="text-align:right">–%</span>
+    </div>
+
+    <div id="info-panel">
+      <div class="placeholder">
+        <span class="icon">💧</span>
+        Click any county<br/>to see water tension<br/>vs. opposition breakdown
+      </div>
+    </div>
+
+    <div id="legend">
+      <div class="legend-title" id="legend-title">Bivariate: WTI × Opposition Rate</div>
+      <div id="biv-legend-wrap">
+        <div class="biv-grid-wrap">
+          <div class="biv-y-label">← Opp rate →</div>
+          <div>
+            <!-- Grid: cols = WTI (low→high), rows = opp rate (high→low) -->
+            <div class="biv-grid">
+              <div class="biv-cell" style="background:#6b46c1" title="Low WTI, High Opp — Other drivers"></div>
+              <div class="biv-cell" style="background:#9b2c2c" title="Mid WTI, High Opp"></div>
+              <div class="biv-cell" style="background:#c53030" title="High WTI, High Opp — Water-driven"></div>
+              <div class="biv-cell" style="background:#553c9a" title="Low WTI, Mid Opp"></div>
+              <div class="biv-cell" style="background:#744210" title="Mid WTI, Mid Opp — Mixed"></div>
+              <div class="biv-cell" style="background:#c05621" title="High WTI, Mid Opp"></div>
+              <div class="biv-cell" style="background:#1e2433" title="Low WTI, No Opp — Quiet"></div>
+              <div class="biv-cell" style="background:#1e4d7a" title="Mid WTI, No Opp"></div>
+              <div class="biv-cell" style="background:#1a365d" title="High WTI, No Opp — Latent risk"></div>
+            </div>
+            <div class="biv-x-labels"><span>Low WTI</span><span>High</span></div>
+          </div>
+        </div>
+        <div class="biv-quad-list">
+          <div class="leg-item"><div class="leg-swatch" style="background:#c53030"></div>Water-driven (high WTI + high opp)</div>
+          <div class="leg-item"><div class="leg-swatch" style="background:#1a365d"></div>Latent risk (high WTI + no opp yet)</div>
+          <div class="leg-item"><div class="leg-swatch" style="background:#6b46c1"></div>Other drivers (low WTI + high opp)</div>
+          <div class="leg-item"><div class="leg-swatch" style="background:#1e2433"></div>Quiet (low WTI + no opp)</div>
+        </div>
+      </div>
+      <div id="std-legend" style="display:none;flex-direction:column;gap:4px;"></div>
+    </div>
+
+    <div id="stats-bar">
+      <span><strong id="s-n">–</strong> counties</span>
+      <span><strong id="s-wd">–</strong> water-driven</span>
+      <span><strong id="s-lr">–</strong> latent risk</span>
+      <span><strong id="s-od">–</strong> other drivers</span>
+      <span id="s-updated" style="margin-left:auto;color:var(--faint)">–</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════════
+//  CONFIG
+//  ► After pushing to GitHub, replace YOUR_GITHUB_USERNAME and
+//    YOUR_REPO_NAME with the actual values, then push again.
+//  ► Example:
+//      DATA_URL: 'https://raw.githubusercontent.com/pricephillips/water-opp-pipeline/main/data/output/water_opp_map.json',
+// ════════════════════════════════════════════════════════════════════
+const CONFIG = {
+  DATA_URL: 'https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/YOUR_REPO_NAME/main/data/output/water_opp_map.json',
+
+  // USDM fallback — auto-populates seasonal/drought component before pipeline runs
+  USDM_FALLBACK_URL: 'https://usdmdataservices.unl.edu/api/CountyStatistics/GetDroughtSeverityStatisticsByAreaPercent?aoi=county&startdate=current&enddate=current&statisticsType=1',
+
+  // County boundaries — shared with the opposition tracker repo
+  GEO_URL: 'https://raw.githubusercontent.com/pricephillips/data-center-map/main/counties.json',
+
+  AUTO_REFRESH_INTERVAL_MS: 60 * 60 * 1000,  // check every hour
+  COUNTDOWN_TICK_MS: 1000,
+};
+
+// ════════════════════════════════════════════════════════════════════
+//  LAYER COLOUR CONFIG
+// ════════════════════════════════════════════════════════════════════
+const LAYERS = {
+  bivariate: {
+    label: 'Bivariate: WTI × Opposition Rate',
+    colorFn: d => d.bivariate_color || '#1e2433',
+  },
+  wti: {
+    label: 'Water Tension Index (WTI)',
+    colorFn: d => scoreColor(d.wti, [
+      [75,'#7f1d1d'],[55,'#c53030'],[35,'#ea580c'],[15,'#ca8a04'],[0,'#166534']
+    ]),
+    legend: [
+      { color:'#7f1d1d', label:'Critical (75–100)' },
+      { color:'#c53030', label:'High (55–75)' },
+      { color:'#ea580c', label:'Moderate (35–55)' },
+      { color:'#ca8a04', label:'Low (15–35)' },
+      { color:'#166534', label:'Minimal (0–15)' },
+    ]
+  },
+  opp_rate: {
+    label: 'Opposition Rate (per 100k pop)',
+    colorFn: d => {
+      const v = d.opp_rate_per_100k || 0;
+      if (v >= 2)   return '#581c87';
+      if (v >= 0.5) return '#7e22ce';
+      if (v >= 0.1) return '#a855f7';
+      if (v > 0)    return '#d8b4fe';
+      return '#1e2433';
+    },
+    legend: [
+      { color:'#581c87', label:'Very high (≥2 / 100k)' },
+      { color:'#7e22ce', label:'High (0.5–2)' },
+      { color:'#a855f7', label:'Moderate (0.1–0.5)' },
+      { color:'#d8b4fe', label:'Low (> 0)' },
+      { color:'#1e2433', label:'None recorded' },
+    ]
+  },
+  residual: {
+    label: 'Model Residuals — "Unexplained Opposition"',
+    colorFn: d => {
+      const v = d.m2_residual || 0;
+      if (v >  2.0) return '#991b1b';
+      if (v >  0.5) return '#dc2626';
+      if (v > -0.5) return '#374151';
+      if (v > -2.0) return '#1e40af';
+      return '#1e3a5f';
+    },
+    legend: [
+      { color:'#991b1b', label:'Strong over (+2σ) — other drivers dominant' },
+      { color:'#dc2626', label:'Moderate over (+0.5–2σ)' },
+      { color:'#374151', label:'Near-zero — model fits well' },
+      { color:'#1e40af', label:'Under-prediction (opposition suppressed)' },
+      { color:'#1e3a5f', label:'Strong under (−2σ)' },
+    ]
+  },
+  supply: {
+    label: 'Supply Deficit Score',
+    colorFn: d => scoreColor(d.supply_deficit_score, [
+      [70,'#1e3a5f'],[50,'#1d4ed8'],[30,'#38bdf8'],[10,'#7dd3fc'],[0,'#e0f2fe']
+    ]),
+    legend: [
+      { color:'#1e3a5f', label:'Critical deficit (70–100)' },
+      { color:'#1d4ed8', label:'High deficit (50–70)' },
+      { color:'#38bdf8', label:'Moderate (30–50)' },
+      { color:'#7dd3fc', label:'Low (10–30)' },
+      { color:'#e0f2fe', label:'Minimal (0–10)' },
+    ]
+  },
+  demand: {
+    label: 'Demand Pressure Score',
+    colorFn: d => scoreColor(d.demand_pressure_score, [
+      [70,'#4a044e'],[50,'#7e22ce'],[30,'#a855f7'],[10,'#d8b4fe'],[0,'#faf5ff']
+    ]),
+    legend: [
+      { color:'#4a044e', label:'Critical pressure (70–100)' },
+      { color:'#7e22ce', label:'High (50–70)' },
+      { color:'#a855f7', label:'Moderate (30–50)' },
+      { color:'#d8b4fe', label:'Low (10–30)' },
+      { color:'#faf5ff', label:'Minimal (0–10)' },
+    ]
+  },
+  seasonal: {
+    label: 'Seasonal Pinch Score',
+    colorFn: d => scoreColor(d.seasonal_pinch_score, [
+      [70,'#7c2d12'],[50,'#c2410c'],[30,'#fb923c'],[10,'#fed7aa'],[0,'#fff7ed']
+    ]),
+    legend: [
+      { color:'#7c2d12', label:'Severe seasonal low (70–100)' },
+      { color:'#c2410c', label:'High (50–70)' },
+      { color:'#fb923c', label:'Moderate (30–50)' },
+      { color:'#fed7aa', label:'Low (10–30)' },
+      { color:'#fff7ed', label:'Minimal (0–10)' },
+    ]
+  },
+};
+
+function scoreColor(val, stops) {
+  if (val == null) return '#1e2433';
+  for (const [threshold, color] of stops) {
+    if (val >= threshold) return color;
+  }
+  return stops[stops.length - 1][1];
+}
+
+const QUADRANT_LABELS = {
+  water_driven: { label: 'Water-driven',  color: '#f87171' },
+  latent_risk:  { label: 'Latent risk',   color: '#60a5fa' },
+  other_drivers:{ label: 'Other drivers', color: '#c084fc' },
+  quiet:        { label: 'Quiet',         color: '#6b7280' },
+};
+
+// ════════════════════════════════════════════════════════════════════
+//  STATE
+// ════════════════════════════════════════════════════════════════════
+let mapData     = {};
+let geojsonLayer= null;
+let currentLayer= 'bivariate';
+let highlights  = { water_driven: false, latent_risk: false, other_drivers: false };
+let autoRefresh = false;
+let refreshTimer= null, countdownTimer = null, nextRefreshAt = null;
+let isLiveData  = false;
+
+// ════════════════════════════════════════════════════════════════════
+//  MAP INIT
+// ════════════════════════════════════════════════════════════════════
+const map = L.map('map', { center:[39,-96], zoom:4, minZoom:3, maxZoom:10 });
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
+  attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 19,
+}).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png', {
+  attribution: '', subdomains: 'abcd', maxZoom: 19, pane: 'shadowPane',
+}).addTo(map);
+
+// ════════════════════════════════════════════════════════════════════
+//  STYLE / INTERACTION
+// ════════════════════════════════════════════════════════════════════
+function isHighlighted(d) {
+  const anyActive = Object.values(highlights).some(Boolean);
+  if (!anyActive) return true;
+  return !!highlights[d?.residual_quadrant];
+}
+
+function countyStyle(feature) {
+  const fips = feature.id || feature.properties?.GEOID;
+  const d    = mapData[fips];
+  if (!d || !isHighlighted(d)) {
+    return { fillColor:'transparent', fillOpacity:0, weight:0.2, color:'#2d3748', opacity:0.15 };
+  }
+  return {
+    fillColor:   LAYERS[currentLayer].colorFn(d),
+    fillOpacity: 0.78,
+    weight:      0.35,
+    color:       '#0c0e14',
+    opacity:     0.8,
+  };
+}
+
+function onEachFeature(feature, layer) {
+  layer.on({
+    mouseover(e) {
+      e.target.setStyle({ weight: 1.5, color: '#94a3b8' });
+      e.target.bringToFront();
+      const fips = feature.id || feature.properties?.GEOID;
+      const d = mapData[fips];
+      if (d) {
+        layer.bindTooltip(
+          `<b>${d.county_name || fips}</b>, ${d.state_name || ''}<br/>` +
+          `WTI: ${d.wti != null ? d.wti.toFixed(1) : '—'} &nbsp;|&nbsp; ` +
+          `Opp/100k: ${d.opp_rate_per_100k != null ? d.opp_rate_per_100k.toFixed(2) : '—'}`,
+          { className: 'county-tooltip', sticky: true }
+        ).openTooltip();
+      }
+    },
+    mouseout(e) { geojsonLayer.resetStyle(e.target); layer.unbindTooltip(); },
+    click(e)    { showInfo(feature.id || feature.properties?.GEOID); },
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  DATA LOADING
+// ════════════════════════════════════════════════════════════════════
+function setLoading(msg) { document.getElementById('loading-status').textContent = msg; }
+
+async function loadData() {
+  setLoading('Fetching county data…');
+  let data = {};
+  let usedFallback = false;
+
+  // Step 1: primary pipeline output
+  try {
+    const resp = await fetch(CONFIG.DATA_URL);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    data = await resp.json();
+    isLiveData = true;
+  } catch (primaryErr) {
+    console.warn('Primary URL failed:', primaryErr.message);
+    // Step 2: USDM live API fallback (gives seasonal pinch with zero setup)
+    try {
+      setLoading('Primary URL not set — loading live USDM drought data…');
+      const usdmResp = await fetch(CONFIG.USDM_FALLBACK_URL);
+      if (usdmResp.ok) {
+        const raw = await usdmResp.json();
+        data = buildDataFromUSDM(raw);
+        usedFallback = true;
+      }
+    } catch (usdmErr) {
+      console.warn('USDM fallback failed:', usdmErr.message);
+    }
+  }
+
+  // Step 3: county boundaries
+  setLoading('Loading county boundaries…');
+  try {
+    const geoResp = await fetch(CONFIG.GEO_URL);
+    if (!geoResp.ok) throw new Error(`Geo HTTP ${geoResp.status}`);
+    const geo = await geoResp.json();
+
+    mapData      = data;
+    geojsonLayer = L.geoJSON(geo, { style: countyStyle, onEachFeature }).addTo(map);
+
+    updateFreshness(usedFallback);
+    updateSourceBar(data);
+    updateLegend();
+    updateStats();
+
+    const overlay = document.getElementById('loading-overlay');
+    overlay.style.opacity = '0';
+    setTimeout(() => overlay.style.display = 'none', 400);
+
+    const sampleRow = Object.values(data)[0] || {};
+    document.getElementById('s-updated').textContent =
+      isLiveData
+        ? `Updated ${sampleRow.last_updated || new Date().toLocaleDateString()}`
+        : usedFallback ? 'USDM live · seed fallback' : 'No data loaded';
+
+  } catch (geoErr) {
+    setLoading('Error loading map geometry — check console.');
+    console.error(geoErr);
+  }
+}
+
+// Build minimal data from USDM API response when pipeline hasn't been run yet
+function buildDataFromUSDM(raw) {
+  const rows = Array.isArray(raw) ? raw : (raw.data || raw.features || []);
+  const out  = {};
+  for (const row of rows) {
+    const fips = String(row.FIPS || row.fips || row.countyfips || '').padStart(5,'0');
+    if (!fips || fips === '00000') continue;
+    const d0 = parseFloat(row.D0||0), d1 = parseFloat(row.D1||0),
+          d2 = parseFloat(row.D2||0), d3 = parseFloat(row.D3||0),
+          d4 = parseFloat(row.D4||0);
+    const pinch = Math.min(100, d0*0.05 + d1*0.15 + d2*0.30 + d3*0.40 + d4*0.60);
+    const wti   = Math.round(pinch * 0.6 + 15);
+    const tier  = wti>=75?'Critical':wti>=55?'High':wti>=35?'Moderate':wti>=15?'Low':'Minimal';
+    const wb    = wti>=65?2:wti>=35?1:0;
+    out[fips] = {
+      fips, wti, wti_tier: tier,
+      supply_deficit_score: null, demand_pressure_score: null,
+      seasonal_pinch_score: Math.round(pinch),
+      opp_count: 0, opp_water_count: 0, opp_water_pct: 0,
+      opp_rate_per_100k: 0, opp_water_rate_per_100k: 0,
+      bivariate_color: ['#1e2433','#1e4d7a','#1a365d'][wb],
+      residual_quadrant: wti>=50?'latent_risk':'quiet',
+      m2_residual: 0,
+      wti_sources: 'USDM_LIVE', wti_completeness: 0.25,
+      county_name: row.Name||row.county||'', state_name: row.State||row.state||'',
+    };
+  }
+  return out;
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  UI UPDATES
+// ════════════════════════════════════════════════════════════════════
+function updateFreshness(usedFallback) {
+  const dot = document.getElementById('freshness-dot');
+  const txt = document.getElementById('freshness-text');
+  const n   = Object.keys(mapData).length;
+  if (!n) {
+    dot.className = 'error'; txt.textContent = 'No data loaded';
+  } else if (usedFallback) {
+    dot.className = 'seed';  txt.textContent = `USDM live · seed WTI (${n.toLocaleString()} counties)`;
+  } else if (isLiveData) {
+    dot.className = 'live';  txt.textContent = `Pipeline output · ${n.toLocaleString()} counties`;
+  } else {
+    dot.className = 'seed';  txt.textContent = `Partial data · ${n.toLocaleString()} counties`;
+  }
+}
+
+function updateSourceBar(data) {
+  const vals = Object.values(data);
+  if (!vals.length) return;
+  const avgComp = vals.reduce((s,d) => s + (d.wti_completeness||0), 0) / vals.length;
+  const hasWRI  = vals.some(d => d.wti_sources?.includes('WRI'));
+  const hasUSGS = vals.some(d => d.wti_sources?.includes('USGS'));
+  const hasUSDM = vals.some(d => d.wti_sources?.includes('USDM'));
+  const hasUSBR = vals.some(d => d.wti_sources?.includes('USBR'));
+  document.getElementById('src-wri').className  = 'src-seg ' + (hasWRI  ? 'active' : 'seed');
+  document.getElementById('src-usgs').className = 'src-seg ' + (hasUSGS ? 'active' : 'seed');
+  document.getElementById('src-usdm').className = 'src-seg ' + (hasUSDM ? 'active' : 'seed');
+  document.getElementById('src-usbr').className = 'src-seg ' + (hasUSBR ? 'active' : 'seed');
+  document.getElementById('src-completeness').textContent = Math.round(avgComp * 100) + '%';
+}
+
+function updateStats() {
+  const vals = Object.values(mapData);
+  document.getElementById('s-n').textContent  = vals.length.toLocaleString();
+  document.getElementById('s-wd').textContent = vals.filter(d=>d.residual_quadrant==='water_driven').length.toLocaleString();
+  document.getElementById('s-lr').textContent = vals.filter(d=>d.residual_quadrant==='latent_risk').length.toLocaleString();
+  document.getElementById('s-od').textContent = vals.filter(d=>d.residual_quadrant==='other_drivers').length.toLocaleString();
+}
+
+function updateLegend() {
+  const isBiv = currentLayer === 'bivariate';
+  document.getElementById('legend-title').textContent = LAYERS[currentLayer].label;
+  document.getElementById('biv-legend-wrap').style.display = isBiv ? '' : 'none';
+  const std = document.getElementById('std-legend');
+  std.style.display = isBiv ? 'none' : 'flex';
+  if (!isBiv && LAYERS[currentLayer].legend) {
+    std.innerHTML = LAYERS[currentLayer].legend.map(item =>
+      `<div class="leg-item"><div class="leg-swatch" style="background:${item.color}"></div><span>${item.label}</span></div>`
+    ).join('');
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  INFO PANEL
+// ════════════════════════════════════════════════════════════════════
+function showInfo(fips) {
+  const d = mapData[fips];
+  if (!d) {
+    document.getElementById('info-panel').innerHTML =
+      `<div class="placeholder"><span class="icon">🔍</span>No data for FIPS ${fips}<br/><small style="color:var(--faint)">Run pipeline or download WRI data</small></div>`;
+    return;
+  }
+
+  const quad = QUADRANT_LABELS[d.residual_quadrant] || { label:'—', color:'#6b7280' };
+  function bar(val, max, color) {
+    const pct = val != null ? Math.min(100, (val/max)*100) : 0;
+    return `<div class="bar-wrap"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div>`;
+  }
+  function fmt(v, dp=1) { return v != null ? Number(v).toFixed(dp) : '—'; }
+
+  const resid     = d.m2_residual || 0;
+  const residColor= resid > 0 ? '#f87171' : '#60a5fa';
+  const residNote = resid > 1.5  ? 'Strongly over-predicted — other factors (politics, organising capacity) are dominant'
+    : resid > 0.5  ? 'More opposition than water tension predicts — investigate local organisers or regulatory context'
+    : resid < -1.5 ? 'Strongly under-predicted — opposition suppressed despite water stress'
+    : resid < -0.5 ? 'Less opposition than water tension predicts — tension may be latent or unorganised'
+    : 'Near model prediction — water tension explains this county\'s opposition rate well';
+
+  const comp      = d.wti_completeness != null ? Math.round(d.wti_completeness * 100) : 0;
+  const compColor = comp >= 75 ? '#4ade80' : comp >= 40 ? '#fbbf24' : '#f87171';
+
+  document.getElementById('info-panel').innerHTML = `
+    <div class="county-hdr">
+      <div class="county-name">${d.county_name || fips}</div>
+      <div class="county-sub">${d.state_name || ''} · FIPS ${fips}</div>
+      <div class="biv-badge" style="background:${d.bivariate_color||'#374151'}22;border:1px solid ${d.bivariate_color||'#374151'}44;color:${quad.color}">
+        <svg width="6" height="6" viewBox="0 0 6 6"><circle cx="3" cy="3" r="3" fill="${quad.color}"/></svg>
+        ${quad.label}
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Water Tension (Independent Variable)</div>
+      <div class="bar-row"><span class="bar-label">WTI <span style="color:var(--faint)">(${d.wti_tier||'—'})</span></span>${bar(d.wti,100,'#38bdf8')}<span class="bar-val">${fmt(d.wti)}</span></div>
+      <div class="bar-row"><span class="bar-label">Supply deficit</span>${bar(d.supply_deficit_score,100,'#1d4ed8')}<span class="bar-val">${fmt(d.supply_deficit_score,0)}</span></div>
+      <div class="bar-row"><span class="bar-label">Demand pressure</span>${bar(d.demand_pressure_score,100,'#9333ea')}<span class="bar-val">${fmt(d.demand_pressure_score,0)}</span></div>
+      <div class="bar-row"><span class="bar-label">Seasonal pinch</span>${bar(d.seasonal_pinch_score,100,'#ea580c')}<span class="bar-val">${fmt(d.seasonal_pinch_score,0)}</span></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Opposition (Dependent Variable)</div>
+      <div class="data-row"><span>Total incidents</span><span class="data-val">${d.opp_count ?? 0}</span></div>
+      <div class="data-row"><span>Water-flagged</span><span class="data-val">${d.opp_water_count ?? 0} (${fmt(d.opp_water_pct,0)}%)</span></div>
+      <div class="bar-row"><span class="bar-label">Opp / 100k</span>${bar(d.opp_rate_per_100k,5,'#a855f7')}<span class="bar-val">${fmt(d.opp_rate_per_100k,2)}</span></div>
+      <div class="bar-row"><span class="bar-label">Water / 100k</span>${bar(d.opp_water_rate_per_100k,5,'#d8b4fe')}<span class="bar-val">${fmt(d.opp_water_rate_per_100k,2)}</span></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Causal Analysis</div>
+      <div class="data-row"><span>M2 residual (std)</span><span class="data-val" style="color:${residColor}">${resid>0?'+':''}${fmt(resid,3)}</span></div>
+      <div class="residual-callout">${residNote}</div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Controls</div>
+      <div class="data-row"><span>GOP vote share 2024</span><span class="data-val">${fmt(d.pct_gop_2024)}%</span></div>
+      <div class="data-row"><span>Water law doctrine</span><span class="data-val">${d.water_law_encoded===1?'Prior appropriation':d.water_law_encoded===0.5?'Hybrid':'Riparian'}</span></div>
+      <div class="data-row"><span>Ag water share</span><span class="data-val">${fmt(d.ag_water_pct,0)}%</span></div>
+    </div>
+
+    <div style="font-size:9px;color:var(--faint);line-height:1.7;border-top:1px solid var(--border);padding-top:6px;margin-top:2px;">
+      Sources: ${d.wti_sources||'—'}<br/>
+      Data completeness: <span style="color:${compColor};font-weight:500">${comp}%</span>
+      ${comp<50?' — <span style="color:var(--yellow)">add WRI Aqueduct CSV to improve</span>':''}
+    </div>
+  `;
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  AUTO-REFRESH (syncs to USDM Tuesday releases)
+// ════════════════════════════════════════════════════════════════════
+function getNextTuesdayUTC() {
+  const now = new Date();
+  const daysUntil = (2 - now.getUTCDay() + 7) % 7 || 7;
+  const next = new Date(now);
+  next.setUTCDate(now.getUTCDate() + daysUntil);
+  next.setUTCHours(14, 0, 0, 0);
+  return next.getTime();
+}
+function toggleAutoRefresh() {
+  autoRefresh = !autoRefresh;
+  document.getElementById('refresh-btn').classList.toggle('active', autoRefresh);
+  if (autoRefresh) {
+    nextRefreshAt = getNextTuesdayUTC();
+    startCountdown();
+    refreshTimer = setInterval(checkRefresh, CONFIG.AUTO_REFRESH_INTERVAL_MS);
+  } else {
+    clearInterval(refreshTimer); clearInterval(countdownTimer);
+    document.getElementById('countdown').textContent = '';
+  }
+}
+function checkRefresh() {
+  if (!autoRefresh || Date.now() < nextRefreshAt) return;
+  loadData(); nextRefreshAt = getNextTuesdayUTC();
+}
+function startCountdown() {
+  clearInterval(countdownTimer);
+  countdownTimer = setInterval(() => {
+    const ms = nextRefreshAt - Date.now();
+    if (ms <= 0) { checkRefresh(); return; }
+    const d = Math.floor(ms/86400000), h = Math.floor((ms%86400000)/3600000), m = Math.floor((ms%3600000)/60000);
+    document.getElementById('countdown').textContent =
+      d>0 ? `Next USDM in ${d}d ${h}h` : h>0 ? `Next USDM in ${h}h ${m}m` : `Next USDM in ${m}m`;
+  }, CONFIG.COUNTDOWN_TICK_MS);
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  CONTROLS
+// ════════════════════════════════════════════════════════════════════
+function setLayer(val) {
+  currentLayer = val;
+  if (geojsonLayer) geojsonLayer.setStyle(countyStyle);
+  updateLegend();
+}
+function toggleHL(type) {
+  highlights[type] = !highlights[type];
+  const id = { water_driven:'water-driven', latent_risk:'latent', other_drivers:'other' }[type];
+  document.getElementById(`btn-${id}`).classList.toggle('active', highlights[type]);
+  if (geojsonLayer) geojsonLayer.setStyle(countyStyle);
+}
+
+loadData();
+</script>
+</body>
+</html>
