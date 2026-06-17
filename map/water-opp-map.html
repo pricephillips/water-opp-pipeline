@@ -314,7 +314,6 @@ select:hover, select:focus { border-color: rgba(255,255,255,0.2); outline: none;
         <div class="biv-grid-wrap">
           <div class="biv-y-label">← Opp rate →</div>
           <div>
-            <!-- Grid: cols = WTI (low→high), rows = opp rate (high→low) -->
             <div class="biv-grid">
               <div class="biv-cell" style="background:#6b46c1" title="Low WTI, High Opp — Other drivers"></div>
               <div class="biv-cell" style="background:#9b2c2c" title="Mid WTI, High Opp"></div>
@@ -352,21 +351,12 @@ select:hover, select:focus { border-color: rgba(255,255,255,0.2); outline: none;
 <script>
 // ════════════════════════════════════════════════════════════════════
 //  CONFIG
-//  ► After pushing to GitHub, replace YOUR_GITHUB_USERNAME and
-//    YOUR_REPO_NAME with the actual values, then push again.
-//  ► Example:
-//      DATA_URL: 'https://raw.githubusercontent.com/pricephillips/water-opp-pipeline/main/data/output/water_opp_map.json',
 // ════════════════════════════════════════════════════════════════════
 const CONFIG = {
   DATA_URL: 'https://raw.githubusercontent.com/pricephillips/water-opp-pipeline/main/data/output/water_opp_map.json',
-
-  // USDM fallback — auto-populates seasonal/drought component before pipeline runs
   USDM_FALLBACK_URL: 'https://usdmdataservices.unl.edu/api/CountyStatistics/GetDroughtSeverityStatisticsByAreaPercent?aoi=county&startdate=current&enddate=current&statisticsType=1',
-
-  // County boundaries — shared with the opposition tracker repo
   GEO_URL: 'https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json',
-
-  AUTO_REFRESH_INTERVAL_MS: 60 * 60 * 1000,  // check every hour
+  AUTO_REFRESH_INTERVAL_MS: 60 * 60 * 1000,
   COUNTDOWN_TICK_MS: 1000,
 };
 
@@ -486,18 +476,26 @@ const QUADRANT_LABELS = {
 // ════════════════════════════════════════════════════════════════════
 //  STATE
 // ════════════════════════════════════════════════════════════════════
-let mapData     = {};
-let geojsonLayer= null;
-let currentLayer= 'bivariate';
-let highlights  = { water_driven: false, latent_risk: false, other_drivers: false };
-let autoRefresh = false;
-let refreshTimer= null, countdownTimer = null, nextRefreshAt = null;
-let isLiveData  = false;
+let mapData      = {};
+let geojsonLayer = null;
+let currentLayer = 'bivariate';
+let highlights   = { water_driven: false, latent_risk: false, other_drivers: false };
+let autoRefresh  = false;
+let refreshTimer = null, countdownTimer = null, nextRefreshAt = null;
+let isLiveData   = false;
+
+// Shared tooltip instance — created once, reused on every hover
+let hoverTooltip = null;
 
 // ════════════════════════════════════════════════════════════════════
-//  MAP INIT
+//  MAP INIT — Canvas renderer for performance
 // ════════════════════════════════════════════════════════════════════
-const map = L.map('map', { center:[39,-96], zoom:4, minZoom:3, maxZoom:10, preferCanvas:true });
+const canvasRenderer = L.canvas({ padding: 0.5 });
+const map = L.map('map', {
+  center: [39, -96], zoom: 4, minZoom: 3, maxZoom: 10,
+  preferCanvas: true,
+  renderer: canvasRenderer,
+});
 
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
   attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 19,
@@ -507,7 +505,7 @@ L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.p
 }).addTo(map);
 
 // ════════════════════════════════════════════════════════════════════
-//  STYLE / INTERACTION
+//  STYLE
 // ════════════════════════════════════════════════════════════════════
 function isHighlighted(d) {
   const anyActive = Object.values(highlights).some(Boolean);
@@ -519,7 +517,7 @@ function countyStyle(feature) {
   const fips = feature.id || feature.properties?.GEOID;
   const d    = mapData[fips];
   if (!d || !isHighlighted(d)) {
-    return { fillColor:'transparent', fillOpacity:0, weight:0.2, color:'#2d3748', opacity:0.15 };
+    return { fillColor: 'transparent', fillOpacity: 0, weight: 0.2, color: '#2d3748', opacity: 0.15 };
   }
   return {
     fillColor:   LAYERS[currentLayer].colorFn(d),
@@ -527,27 +525,53 @@ function countyStyle(feature) {
     weight:      0.35,
     color:       '#0c0e14',
     opacity:     0.8,
+    renderer:    canvasRenderer,
   };
 }
 
+// ════════════════════════════════════════════════════════════════════
+//  DELEGATED INTERACTION — single mousemove on the layer, not per-feature
+// ════════════════════════════════════════════════════════════════════
 function onEachFeature(feature, layer) {
-  layer.on({
-    mouseover(e) {
-      e.target.setStyle({ weight: 1.5, color: '#94a3b8' });
-      e.target.bringToFront();
-      const fips = feature.id || feature.properties?.GEOID;
-      const d = mapData[fips];
-      if (d) {
-        layer.bindTooltip(
-          `<b>${d.county_name || fips}</b>, ${d.state_name || ''}<br/>` +
-          `WTI: ${d.wti != null ? d.wti.toFixed(1) : '—'} &nbsp;|&nbsp; ` +
-          `Opp/100k: ${d.opp_rate_per_100k != null ? d.opp_rate_per_100k.toFixed(2) : '—'}`,
-          { className: 'county-tooltip', sticky: true }
-        ).openTooltip();
-      }
-    },
-    mouseout(e) { geojsonLayer.resetStyle(e.target); },
-    click(e)    { showInfo(feature.id || feature.properties?.GEOID); },
+  // Only click is bound per-feature; hover is handled via layer-level delegation below
+  layer.on('click', () => showInfo(feature.id || feature.properties?.GEOID));
+}
+
+function attachDelegatedHover(geoLayer) {
+  // Create one shared tooltip
+  hoverTooltip = L.tooltip({ className: 'county-tooltip', sticky: true, opacity: 1 });
+
+  let lastFips = null;
+
+  geoLayer.on('mouseover', function(e) {
+    const fips = e.layer?.feature?.id || e.layer?.feature?.properties?.GEOID;
+    if (!fips || fips === lastFips) return;
+    lastFips = fips;
+
+    const d = mapData[fips];
+    if (!d) return;
+
+    e.layer.setStyle({ weight: 1.5, color: '#94a3b8' });
+    e.layer.bringToFront();
+
+    hoverTooltip
+      .setContent(
+        `<b>${d.county_name || fips}</b>, ${d.state_name || ''}<br/>` +
+        `WTI: ${d.wti != null ? d.wti.toFixed(1) : '—'} &nbsp;|&nbsp; ` +
+        `Opp/100k: ${d.opp_rate_per_100k != null ? d.opp_rate_per_100k.toFixed(2) : '—'}`
+      )
+      .setLatLng(e.latlng)
+      .addTo(map);
+  });
+
+  geoLayer.on('mousemove', function(e) {
+    if (hoverTooltip) hoverTooltip.setLatLng(e.latlng);
+  });
+
+  geoLayer.on('mouseout', function(e) {
+    lastFips = null;
+    geoLayer.resetStyle(e.layer);
+    if (hoverTooltip) hoverTooltip.remove();
   });
 }
 
@@ -561,7 +585,6 @@ async function loadData() {
   let data = {};
   let usedFallback = false;
 
-  // Step 1: primary pipeline output
   try {
     const resp = await fetch(CONFIG.DATA_URL);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -569,7 +592,6 @@ async function loadData() {
     isLiveData = true;
   } catch (primaryErr) {
     console.warn('Primary URL failed:', primaryErr.message);
-    // Step 2: USDM live API fallback (gives seasonal pinch with zero setup)
     try {
       setLoading('Primary URL not set — loading live USDM drought data…');
       const usdmResp = await fetch(CONFIG.USDM_FALLBACK_URL);
@@ -583,7 +605,6 @@ async function loadData() {
     }
   }
 
-  // Step 3: county boundaries
   setLoading('Loading county boundaries…');
   try {
     const geoResp = await fetch(CONFIG.GEO_URL);
@@ -591,7 +612,13 @@ async function loadData() {
     const geo = await geoResp.json();
 
     mapData      = data;
-    geojsonLayer = L.geoJSON(geo, { style: countyStyle, onEachFeature }).addTo(map);
+    geojsonLayer = L.geoJSON(geo, {
+      style: countyStyle,
+      onEachFeature,
+      renderer: canvasRenderer,
+    }).addTo(map);
+
+    attachDelegatedHover(geojsonLayer);
 
     updateFreshness(usedFallback);
     updateSourceBar(data);
@@ -614,12 +641,11 @@ async function loadData() {
   }
 }
 
-// Build minimal data from USDM API response when pipeline hasn't been run yet
 function buildDataFromUSDM(raw) {
   const rows = Array.isArray(raw) ? raw : (raw.data || raw.features || []);
   const out  = {};
   for (const row of rows) {
-    const fips = String(row.FIPS || row.fips || row.countyfips || '').padStart(5,'0');
+    const fips = String(row.FIPS || row.fips || row.countyfips || '').padStart(5, '0');
     if (!fips || fips === '00000') continue;
     const d0 = parseFloat(row.D0||0), d1 = parseFloat(row.D1||0),
           d2 = parseFloat(row.D2||0), d3 = parseFloat(row.D3||0),
@@ -716,10 +742,10 @@ function showInfo(fips) {
   }
   function fmt(v, dp=1) { return v != null ? Number(v).toFixed(dp) : '—'; }
 
-  const resid     = d.m2_residual || 0;
-  const residColor= resid > 0 ? '#f87171' : '#60a5fa';
-  const residNote = resid > 1.5  ? 'Strongly over-predicted — other factors (politics, organising capacity) are dominant'
-    : resid > 0.5  ? 'More opposition than water tension predicts — investigate local organisers or regulatory context'
+  const resid      = d.m2_residual || 0;
+  const residColor = resid > 0 ? '#f87171' : '#60a5fa';
+  const residNote  = resid > 1.5  ? 'Strongly over-predicted — other factors (politics, organising capacity) are dominant'
+    : resid > 0.5  ? 'More opposition than water tension predicts — possible presence of non-hydrological opposition drivers (political mobilisation, land-use conflict, or coordinated advocacy)'
     : resid < -1.5 ? 'Strongly under-predicted — opposition suppressed despite water stress'
     : resid < -0.5 ? 'Less opposition than water tension predicts — tension may be latent or unorganised'
     : 'Near model prediction — water tension explains this county\'s opposition rate well';
@@ -775,7 +801,7 @@ function showInfo(fips) {
 }
 
 // ════════════════════════════════════════════════════════════════════
-//  AUTO-REFRESH (syncs to USDM Tuesday releases)
+//  AUTO-REFRESH
 // ════════════════════════════════════════════════════════════════════
 function getNextTuesdayUTC() {
   const now = new Date();
