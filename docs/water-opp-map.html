@@ -497,7 +497,7 @@ let isLiveData  = false;
 // ════════════════════════════════════════════════════════════════════
 //  MAP INIT
 // ════════════════════════════════════════════════════════════════════
-const map = L.map('map', { center:[39,-96], zoom:4, minZoom:3, maxZoom:10 });
+const map = L.map('map', { center:[39,-96], zoom:4, minZoom:3, maxZoom:10, preferCanvas:true });
 
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
   attribution: '© OpenStreetMap © CARTO', subdomains: 'abcd', maxZoom: 19,
