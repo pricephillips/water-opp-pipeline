@@ -546,7 +546,7 @@ function onEachFeature(feature, layer) {
         ).openTooltip();
       }
     },
-    mouseout(e) { geojsonLayer.resetStyle(e.target); layer.unbindTooltip(); },
+    mouseout(e) { geojsonLayer.resetStyle(e.target); },
     click(e)    { showInfo(feature.id || feature.properties?.GEOID); },
   });
 }
