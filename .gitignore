@@ -1,0 +1,26 @@
+# ── Raw data downloads (large, manual, do not commit) ──────────────────────
+data/raw/
+
+# ── Intermediate processed files (rebuilt by pipeline) ─────────────────────
+data/processed/
+
+# ── Python ─────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+venv/
+.venv/
+*.egg-info/
+
+# ── OS / editor ─────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# ── DO NOT IGNORE — these are committed outputs ─────────────────────────────
+# data/output/         → JSON + CSV read by the map; must be committed
+# data/seed/           → state reference baselines; must be committed
+# map/water-opp-map.html → the live map file; must be committed

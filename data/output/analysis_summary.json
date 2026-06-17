@@ -1,0 +1,37 @@
+{
+  "generated": "2026-06-17",
+  "n_counties": 3120,
+  "n_opp_counties": 523,
+  "n_water_opp_counties": 281,
+  "correlations": {
+    "r_wti_opp_rate": -0.0257,
+    "r_wti_water_opp_rate": -0.0074,
+    "r_gop_opp_rate": 0.0115,
+    "partial_r_wti_opp_controlling_gop": -0.0277
+  },
+  "models": {
+    "M1": {
+      "beta_wti": -0.0257,
+      "r_squared": 0.0007
+    },
+    "M2": {
+      "beta_wti": -0.0337,
+      "r_squared": 0.0012,
+      "delta_r2": 0.0004
+    },
+    "M3": {
+      "beta_wti": 0.0509,
+      "r_squared": 0.0018
+    }
+  },
+  "quadrant_counts": {
+    "quiet": 2103,
+    "other_drivers": 454,
+    "latent_risk": 494,
+    "water_driven": 69
+  },
+  "interpretation": {
+    "wti_is_causal": false,
+    "wti_stronger_than_gop": true
+  }
+}

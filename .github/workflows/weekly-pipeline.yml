@@ -1,0 +1,62 @@
+name: Weekly Water–Opposition Rebuild
+
+on:
+  schedule:
+    # Every Tuesday 18:00 UTC — after USDM releases weekly data (~15:00 UTC Tuesdays)
+    - cron: '0 18 * * 2'
+  workflow_dispatch:
+    inputs:
+      skip_usgs:
+        description: 'Skip USGS fetch (faster run, uses cached data)'
+        type: boolean
+        default: false
+      states:
+        description: 'Limit USGS to these states (space-separated, e.g. TX AZ NV VA GA). Leave blank for national.'
+        type: string
+        default: ''
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pipeline
+        run: |
+          ARGS="--skip-usbr"
+          if [ "${{ inputs.skip_usgs || 'false' }}" = "true" ]; then ARGS="$ARGS --skip-usgs"; fi
+          if [ -n "${{ inputs.states }}" ]; then ARGS="$ARGS --states ${{ inputs.states }}"; fi
+          python build.py $ARGS
+
+      - name: Verify outputs
+        run: |
+          echo "=== Output files ==="
+          ls -lh data/output/
+          test -f data/output/master_analysis.csv   || (echo "MISSING master_analysis.csv" && exit 1)
+          test -f data/output/water_opp_map.json    || (echo "MISSING water_opp_map.json"  && exit 1)
+          test -f data/output/analysis_summary.json || (echo "MISSING analysis_summary.json" && exit 1)
+          echo "All output files verified."
+
+      - name: Commit and push outputs
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/output/
+          git diff --staged --quiet && echo "No changes to commit." || \
+            git commit -m "Auto: weekly rebuild $(date -u '+%Y-%m-%d')" && git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
