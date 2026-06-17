@@ -546,7 +546,7 @@ function onEachFeature(feature, layer) {
         ).openTooltip();
       }
     },
-    mouseout(e) { geojsonLayer.resetStyle(e.target); layer.unbindTooltip(); },
+    mouseout(e) { geojsonLayer.resetStyle(e.target); },
     click(e)    { showInfo(feature.id || feature.properties?.GEOID); },
   });
 }
@@ -767,9 +767,9 @@ function showInfo(fips) {
     </div>
 
     <div style="font-size:9px;color:var(--faint);line-height:1.7;border-top:1px solid var(--border);padding-top:6px;margin-top:2px;">
-      Sources: ${d.wti_sources||'—'}<br/>
-      Data completeness: <span style="color:${compColor};font-weight:500">${comp}%</span>
-      ${comp<50?' — <span style="color:var(--yellow)">add WRI Aqueduct CSV to improve</span>':''}
+      WTI inputs: ${d.wti_sources||'—'}<br/>
+      County-level completeness: <span style="color:${compColor};font-weight:500">${comp}%</span>
+      ${comp<50?' — <span style="color:var(--yellow)">seed fallback active; add county-linked WRI/USGS inputs to improve</span>':''}
     </div>
   `;
 }
