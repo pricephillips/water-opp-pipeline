@@ -128,10 +128,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/raw/usdm_county_latest.csv \
-                  data/processed/drought_monitor.csv \
-                  data/output/analysis_summary.json \
-                  data/output/master_analysis.csv \
-                  data/output/water_opp_map.json
+          git add -f data/raw/usdm_county_latest.csv \
+                     data/processed/drought_monitor.csv \
+                     data/output/analysis_summary.json \
+                     data/output/master_analysis.csv \
+                     data/output/water_opp_map.json
           git diff --cached --quiet && echo "No changes to commit" || \
             git commit -m "chore: weekly USDM refresh $(date +%Y-%m-%d)" && git push
