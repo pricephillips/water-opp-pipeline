@@ -4,31 +4,31 @@
   "n_opp_counties": 523,
   "n_water_opp_counties": 281,
   "correlations": {
-    "r_wti_opp_rate": -0.0214,
-    "r_wti_water_opp_rate": -0.0026,
+    "r_wti_opp_rate": -0.0221,
+    "r_wti_water_opp_rate": -0.0033,
     "r_gop_opp_rate": 0.0115,
-    "partial_r_wti_opp_controlling_gop": -0.0227
+    "partial_r_wti_opp_controlling_gop": -0.0231
   },
   "models": {
     "M1": {
-      "beta_wti": -0.0214,
+      "beta_wti": -0.0221,
       "r_squared": 0.0005
     },
     "M2": {
-      "beta_wti": -0.0184,
+      "beta_wti": -0.0183,
       "r_squared": 0.001,
       "delta_r2": 0.0002
     },
     "M3": {
-      "beta_wti": 0.024,
+      "beta_wti": 0.0268,
       "r_squared": 0.0014
     }
   },
   "quadrant_counts": {
-    "quiet": 1918,
-    "other_drivers": 444,
-    "latent_risk": 679,
-    "water_driven": 79
+    "quiet": 1958,
+    "other_drivers": 446,
+    "latent_risk": 639,
+    "water_driven": 77
   },
   "interpretation": {
     "wti_is_causal": false,
