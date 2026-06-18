@@ -32,15 +32,20 @@ jobs:
         id: dates
         run: |
           python3 - <<'PY'
-          from datetime import date, timedelta
           import os
+          from datetime import date, timedelta
+          
+          # Find the most recent Tuesday (USDM data snapshot day)
           today = date.today()
-          days_back = (today.weekday() - 3) % 7
+          days_back = (today.weekday() - 1) % 7
           snapshot = today - timedelta(days=days_back)
+          
+          # USDM API requires exact format: M/D/YYYY (no leading zeros)
           usdm_date = f"{snapshot.month}/{snapshot.day}/{snapshot.year}"
+          
+          print(f"Computed USDM Date: {usdm_date}")
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"usdm_date={usdm_date}\n")
-          print(usdm_date)
           PY
 
       - name: Download latest county statistics CSV
@@ -63,6 +68,8 @@ jobs:
           all_rows = []
           fieldnames = None
 
+          print(f"Fetching USDM data for date: {usdm_date}")
+
           for st in states:
               url = (
                   "https://usdmdataservices.unl.edu/api/CountyStatistics/"
@@ -71,7 +78,13 @@ jobs:
               )
               r = requests.get(url, headers={"Accept": "text/csv"}, timeout=60)
               r.raise_for_status()
+              
               lines = [line for line in r.text.splitlines() if line.strip()]
+              
+              # Some states might be entirely empty for a given week
+              if not lines or "No Data" in lines[0]:
+                  continue
+                  
               reader = csv.DictReader(lines)
               rows = list(reader)
               if rows:
@@ -80,7 +93,7 @@ jobs:
                   all_rows.extend(rows)
 
           if not all_rows:
-              raise SystemExit("USDM returned 0 county rows across all states")
+              raise SystemExit(f"USDM returned 0 county rows across all states for {usdm_date}")
 
           with open(out_path, "w", newline="", encoding="utf-8") as f:
               writer = csv.DictWriter(f, fieldnames=fieldnames)
