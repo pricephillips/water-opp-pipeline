@@ -55,6 +55,7 @@ jobs:
           import csv
           import os
           import requests
+          from datetime import datetime, timedelta
           from pathlib import Path
 
           states = [
@@ -63,37 +64,49 @@ jobs:
               "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC","PR"
           ]
 
-          usdm_date = os.environ["USDM_DATE"]
+          # Parse the initial date we got from the previous step
+          usdm_date_str = os.environ["USDM_DATE"]
+          current_dt = datetime.strptime(usdm_date_str, "%m/%d/%Y")
+          
           out_path = Path("data/raw/usdm_county_latest.csv")
           all_rows = []
           fieldnames = None
 
-          print(f"Fetching USDM data for date: {usdm_date}")
-
-          for st in states:
-              url = (
-                  "https://usdmdataservices.unl.edu/api/CountyStatistics/"
-                  "GetDroughtSeverityStatisticsByAreaPercent"
-                  f"?aoi={st}&startdate={usdm_date}&enddate={usdm_date}&statisticsType=1"
-              )
-              r = requests.get(url, headers={"Accept": "text/csv"}, timeout=60)
-              r.raise_for_status()
+          # Try up to 3 consecutive weeks
+          for week_attempt in range(3):
+              attempt_date_str = f"{current_dt.month}/{current_dt.day}/{current_dt.year}"
+              print(f"Fetching USDM data for date: {attempt_date_str} ...")
               
-              lines = [line for line in r.text.splitlines() if line.strip()]
-              
-              # Some states might be entirely empty for a given week
-              if not lines or "No Data" in lines[0]:
-                  continue
+              all_rows = []
+              for st in states:
+                  url = (
+                      "https://usdmdataservices.unl.edu/api/CountyStatistics/"
+                      "GetDroughtSeverityStatisticsByAreaPercent"
+                      f"?aoi={st}&startdate={attempt_date_str}&enddate={attempt_date_str}&statisticsType=1"
+                  )
+                  r = requests.get(url, headers={"Accept": "text/csv"}, timeout=60)
+                  r.raise_for_status()
                   
-              reader = csv.DictReader(lines)
-              rows = list(reader)
-              if rows:
-                  if fieldnames is None:
-                      fieldnames = reader.fieldnames
-                  all_rows.extend(rows)
+                  lines = [line for line in r.text.splitlines() if line.strip()]
+                  if not lines or "No Data" in lines[0]:
+                      continue
+                      
+                  reader = csv.DictReader(lines)
+                  rows = list(reader)
+                  if rows:
+                      if fieldnames is None:
+                          fieldnames = reader.fieldnames
+                      all_rows.extend(rows)
+              
+              if all_rows:
+                  print(f"Success! Found {len(all_rows)} rows.")
+                  break
+              
+              print("No rows returned. Falling back to the previous week...")
+              current_dt -= timedelta(days=7)
 
           if not all_rows:
-              raise SystemExit(f"USDM returned 0 county rows across all states for {usdm_date}")
+              raise SystemExit("USDM returned 0 county rows after 3 attempts.")
 
           with open(out_path, "w", newline="", encoding="utf-8") as f:
               writer = csv.DictWriter(f, fieldnames=fieldnames)
