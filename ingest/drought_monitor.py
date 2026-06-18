@@ -8,10 +8,10 @@ Outputs: data/processed/drought_monitor.csv
 
 USDM API documentation: https://droughtmonitor.unl.edu/DmData/DataTables.aspx
 
-The USDM publishes weekly snapshots every Tuesday. This script:
-  1. Fetches the most recent Tuesday's county statistics
-  2. Fetches the 10-year historical county statistics for drought frequency
-  3. Outputs both to processed/
+The USDM publishes weekly snapshots every Thursday. This script:
+1. Fetches the most recent Thursday's county statistics
+2. Fetches the 10-year historical county statistics for drought frequency
+3. Outputs both to processed/
 
 Free API, no key required.
 """
@@ -43,11 +43,11 @@ CATEGORY_SCORE = {
 }
 
 
-def last_tuesday() -> date:
-    """Return the most recent Tuesday (USDM release day)."""
-    today = date.today()
-    days_since_tuesday = (today.weekday() - 1) % 7
-    return today - timedelta(days=days_since_tuesday)
+def last_thursday(d: date | None = None) -> date:
+    """Return the most recent Thursday (USDM release day)."""
+    d = d or date.today()
+    days_back = (d.weekday() - 3) % 7  # Thursday = weekday 3
+    return d - timedelta(days=days_back)
 
 
 def fetch_json(url: str, retries: int = 3, delay: float = 2.0) -> list | dict | None:
@@ -77,10 +77,11 @@ def fetch_json(url: str, retries: int = 3, delay: float = 2.0) -> list | dict | 
 def fetch_current_county_drought(snapshot_date: date | None = None) -> list[dict]:
     """
     Fetch current USDM county statistics for a given snapshot date.
+    USDM publishes every Thursday — if no date given, snaps to most recent Thursday.
 
     Returns list of dicts, one per county:
         {
-            'MapDate': '20260617',
+            'MapDate': '20260612',
             'FIPS': '48453',
             'County': 'Travis',
             'State': 'TX',
@@ -93,7 +94,7 @@ def fetch_current_county_drought(snapshot_date: date | None = None) -> list[dict
         }
     """
     if snapshot_date is None:
-        snapshot_date = last_tuesday()
+        snapshot_date = last_thursday()
 
     start_str = snapshot_date.strftime("%Y-%m-%d")
     end_str = snapshot_date.strftime("%Y-%m-%d")
@@ -102,6 +103,7 @@ def fetch_current_county_drought(snapshot_date: date | None = None) -> list[dict
         f"{USDM_API}/GetDroughtSeverityStatisticsByAreaPercent"
         f"?aoi=county&startdate={start_str}&enddate={end_str}&statisticsType=1"
     )
+
     print(f"Fetching USDM current conditions: {snapshot_date} ...")
     data = fetch_json(url)
 
@@ -128,7 +130,6 @@ def fetch_historical_county_drought(
     if end_year is None:
         end_year = date.today().year - 1
 
-    # USDM statistics endpoint: county-level annual summaries
     url = (
         f"{USDM_API}/GetDroughtSeverityStatisticsByAreaPercent"
         f"?aoi=county"
@@ -136,6 +137,7 @@ def fetch_historical_county_drought(
         f"&enddate={end_year}-12-31"
         f"&statisticsType=2"  # statisticsType=2 → weekly frequency stats
     )
+
     print(f"Fetching USDM historical ({start_year}–{end_year}) ...")
     data = fetch_json(url)
 
@@ -169,6 +171,7 @@ def compute_current_scores(records: list[dict]) -> dict[str, dict]:
             cat: float(row.get(cat, 0) or 0)
             for cat in ["D4", "D3", "D2", "D1", "D0", "None"]
         }
+
         dominant = "None"
         for cat in ["D4", "D3", "D2", "D1", "D0"]:
             if pcts.get(cat, 0) > 10:  # >10% of county in this category
@@ -184,8 +187,6 @@ def compute_current_scores(records: list[dict]) -> dict[str, dict]:
             for cat in CATEGORY_SCORE
             if cat != "None"
         )
-        # Also weight the "None" area as 0
-        # weighted is already a 0–100 value weighted by area coverage
 
         results[raw_fips] = {
             "usdm_current_category": dominant,
@@ -269,7 +270,7 @@ def save_drought_csv(current: dict, historical: dict, out_path: Path):
 def run():
     print("=== USDM Drought Monitor Ingestion ===")
 
-    snapshot = last_tuesday()
+    snapshot = last_thursday()
     print(f"Using snapshot date: {snapshot}")
 
     current_raw = fetch_current_county_drought(snapshot)
