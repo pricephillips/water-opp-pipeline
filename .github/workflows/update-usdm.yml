@@ -5,6 +5,9 @@ on:
     - cron: "0 18 * * 4"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   update:
     runs-on: ubuntu-latest
@@ -25,13 +28,88 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run drought ingest
+      - name: Compute USDM snapshot date
+        id: dates
         run: |
-          python3 ingest/drought_monitor.py
+          python3 - <<'PY'
+          from datetime import date, timedelta
+          today = date.today()
+          days_back = (today.weekday() - 3) % 7
+          snapshot = today - timedelta(days=days_back)
+          m = snapshot.month
+          d = snapshot.day
+          y = snapshot.year
+          usdm_date = f"{m}/{d}/{y}"
+          with open(__import__("os").environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"usdm_date={usdm_date}\n")
+          print(usdm_date)
+          PY
+
+      - name: Download latest county statistics CSV
+        run: |
+          mkdir -p data/raw
+          curl -fL \
+            "https://usdmdataservices.unl.edu/api/CountyStatistics/GetDroughtSeverityStatisticsByAreaPercent?aoi=TX&startdate=${{ steps.dates.outputs.usdm_date }}&enddate=${{ steps.dates.outputs.usdm_date }}&statisticsType=1" \
+            -H "Accept: text/csv" \
+            -o /tmp/usdm_test.csv
+
+          if [ ! -s /tmp/usdm_test.csv ]; then
+            echo "USDM CSV download failed"
+            exit 1
+          fi
+
+          python3 - <<'PY'
+          import csv
+          import requests
+          from pathlib import Path
+
+          states = [
+              "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD",
+              "MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC",
+              "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC","PR"
+          ]
+
+          import os
+          usdm_date = os.environ["USDM_DATE"]
+          out_path = Path("data/raw/usdm_county_latest.csv")
+
+          all_rows = []
+          fieldnames = None
+
+          for st in states:
+              url = (
+                  "https://usdmdataservices.unl.edu/api/CountyStatistics/"
+                  "GetDroughtSeverityStatisticsByAreaPercent"
+                  f"?aoi={st}&startdate={usdm_date}&enddate={usdm_date}&statisticsType=1"
+              )
+              r = requests.get(url, headers={"Accept": "text/csv"}, timeout=60)
+              r.raise_for_status()
+              lines = [line for line in r.text.splitlines() if line.strip()]
+              reader = csv.DictReader(lines)
+              rows = list(reader)
+              if rows:
+                  if fieldnames is None:
+                      fieldnames = reader.fieldnames
+                  all_rows.extend(rows)
+
+          if not all_rows:
+              raise SystemExit("USDM returned 0 county rows across all states")
+
+          with open(out_path, "w", newline="", encoding="utf-8") as f:
+              writer = csv.DictWriter(f, fieldnames=fieldnames)
+              writer.writeheader()
+              writer.writerows(all_rows)
+
+          print(f"Wrote {len(all_rows)} rows to {out_path}")
+          PY
+        env:
+          USDM_DATE: ${{ steps.dates.outputs.usdm_date }}
+
+      - name: Run drought ingest
+        run: python3 ingest/drought_monitor.py
 
       - name: Run full pipeline
-        run: |
-          python3 build.py --skip-usgs --skip-usbr
+        run: python3 build.py --skip-usgs --skip-usbr
 
       - name: Commit and push updated outputs
         run: |
