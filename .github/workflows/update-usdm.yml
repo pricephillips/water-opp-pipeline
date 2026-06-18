@@ -33,14 +33,12 @@ jobs:
         run: |
           python3 - <<'PY'
           from datetime import date, timedelta
+          import os
           today = date.today()
           days_back = (today.weekday() - 3) % 7
           snapshot = today - timedelta(days=days_back)
-          m = snapshot.month
-          d = snapshot.day
-          y = snapshot.year
-          usdm_date = f"{m}/{d}/{y}"
-          with open(__import__("os").environ["GITHUB_OUTPUT"], "a") as f:
+          usdm_date = f"{snapshot.month}/{snapshot.day}/{snapshot.year}"
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
               f.write(f"usdm_date={usdm_date}\n")
           print(usdm_date)
           PY
@@ -48,18 +46,9 @@ jobs:
       - name: Download latest county statistics CSV
         run: |
           mkdir -p data/raw
-          curl -fL \
-            "https://usdmdataservices.unl.edu/api/CountyStatistics/GetDroughtSeverityStatisticsByAreaPercent?aoi=TX&startdate=${{ steps.dates.outputs.usdm_date }}&enddate=${{ steps.dates.outputs.usdm_date }}&statisticsType=1" \
-            -H "Accept: text/csv" \
-            -o /tmp/usdm_test.csv
-
-          if [ ! -s /tmp/usdm_test.csv ]; then
-            echo "USDM CSV download failed"
-            exit 1
-          fi
-
           python3 - <<'PY'
           import csv
+          import os
           import requests
           from pathlib import Path
 
@@ -69,10 +58,8 @@ jobs:
               "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY","DC","PR"
           ]
 
-          import os
           usdm_date = os.environ["USDM_DATE"]
           out_path = Path("data/raw/usdm_county_latest.csv")
-
           all_rows = []
           fieldnames = None
 
