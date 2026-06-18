@@ -1,12 +1,3 @@
-# 1. Cancel the broken rebase from earlier
-git rebase --abort || true
-
-# 2. Hard reset your local branch to match GitHub exactly (throws away the conflict)
-git fetch origin
-git reset --hard origin/main
-
-# 3. Re-write the file entirely to overwrite whatever is there
-cat > .github/workflows/update-usdm.yml <<'EOF'
 name: Update USDM Drought Data
 
 on:
@@ -118,9 +109,3 @@ jobs:
                   data/output/water_opp_map.json
           git diff --cached --quiet && echo "No changes to commit" || \
             git commit -m "chore: weekly USDM refresh $(date +%Y-%m-%d)" && git push
-EOF
-
-# 4. Commit and push
-git add .github/workflows/update-usdm.yml
-git commit -m "ci: fix USDM workflow fetch logic (clean reset)"
-git push origin main
