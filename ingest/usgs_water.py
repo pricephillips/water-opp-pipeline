@@ -8,18 +8,18 @@ USGS Water Services REST API.
 Outputs: data/processed/usgs_water.csv
 
 USGS API docs: https://waterservices.usgs.gov/rest/
-  - Site service: /nwis/site/
-  - Groundwater levels: /nwis/gwlevels/
-  - Instantaneous values (streamflow): /nwis/iv/
-  - Statistics: /nwis/stat/
+- Site service: /nwis/site/
+- Groundwater levels: /nwis/gwlevels/
+- Instantaneous values (streamflow): /nwis/iv/
+- Statistics: /nwis/stat/
 
 Both endpoints are free; no API key required.
 
 NOTE: USGS data is by monitoring site, not by county. This script:
-  1. Fetches all active groundwater sites nationally
-  2. For each site, gets recent water level vs. long-term median
-  3. Aggregates site-level anomalies to county FIPS by simple averaging
-  4. Separately fetches streamflow percentiles by FIPS-linked HUC
+1. Fetches all active groundwater sites nationally
+2. For each site, gets recent water level vs. long-term median
+3. Aggregates site-level anomalies to county FIPS by simple averaging
+4. Separately fetches streamflow percentiles by FIPS-linked HUC
 """
 
 import csv
@@ -39,14 +39,13 @@ OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 USGS_BASE = "https://waterservices.usgs.gov/nwis"
 
-
 def fetch_rdb(url: str, retries: int = 3) -> list[dict] | None:
     """
     Fetch USGS RDB (tab-delimited with # comments) format.
     Returns list of dicts, one per data row.
     """
     headers = {
-        "User-Agent": "water-risk-pipeline/1.0 (THG research)",
+        "User-Agent": "water-risk-pipeline/1.0 (pricephillips@example.com)",
         "Accept": "text/plain",
     }
     for attempt in range(retries):
@@ -54,21 +53,21 @@ def fetch_rdb(url: str, retries: int = 3) -> list[dict] | None:
             req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=60) as response:
                 raw = response.read().decode("utf-8", errors="replace")
-            # Parse RDB: skip # comment lines, then tab-delimited
-            lines = [l for l in raw.split("\n") if not l.startswith("#") and l.strip()]
-            if len(lines) < 2:
-                return []
-            headers_row = lines[0].split("\t")
-            # Second line is data type descriptors — skip
-            data_rows = lines[2:]
-            results = []
-            for line in data_rows:
-                if not line.strip():
-                    continue
-                parts = line.split("\t")
-                row = {headers_row[i]: parts[i] if i < len(parts) else "" for i in range(len(headers_row))}
-                results.append(row)
-            return results
+                # Parse RDB: skip # comment lines, then tab-delimited
+                lines = [l for l in raw.split("\n") if not l.startswith("#") and l.strip()]
+                if len(lines) < 2:
+                    return []
+                headers_row = lines[0].split("\t")
+                # Second line is data type descriptors — skip
+                data_rows = lines[2:]
+                results = []
+                for line in data_rows:
+                    if not line.strip():
+                        continue
+                    parts = line.split("\t")
+                    row = {headers_row[i]: parts[i] if i < len(parts) else "" for i in range(len(headers_row))}
+                    results.append(row)
+                return results
         except urllib.error.HTTPError as e:
             print(f"  HTTP {e.code} on attempt {attempt+1}/{retries}: {url[:80]}")
             if attempt < retries - 1:
@@ -77,12 +76,12 @@ def fetch_rdb(url: str, retries: int = 3) -> list[dict] | None:
             print(f"  Error attempt {attempt+1}/{retries}: {e}")
             if attempt < retries - 1:
                 time.sleep(2)
-    return None
-
+    print("  WARNING: RDB Fetch failed completely. Returning empty list.")
+    return []
 
 def fetch_json(url: str, retries: int = 3) -> dict | None:
     """Fetch USGS JSON response."""
-    headers = {"User-Agent": "water-risk-pipeline/1.0"}
+    headers = {"User-Agent": "water-risk-pipeline/1.0 (pricephillips@example.com)", "Accept": "application/json"}
     for attempt in range(retries):
         try:
             req = urllib.request.Request(url, headers=headers)
@@ -96,8 +95,8 @@ def fetch_json(url: str, retries: int = 3) -> dict | None:
             print(f"  Error attempt {attempt+1}: {e}")
             if attempt < retries - 1:
                 time.sleep(2)
-    return None
-
+    print("  WARNING: JSON Fetch failed completely. Returning empty dict.")
+    return {}
 
 def fetch_active_groundwater_sites(state_abbr: str) -> list[dict]:
     """
@@ -113,15 +112,14 @@ def fetch_active_groundwater_sites(state_abbr: str) -> list[dict]:
         f"&outputDataTypeCd=gw"
     )
     rows = fetch_rdb(url)
-    if rows is None:
+    if rows is None or len(rows) == 0:
         return []
     return rows
-
 
 def fetch_groundwater_stats(state_abbr: str) -> list[dict]:
     """
     Fetch groundwater level statistics (percentile-based anomaly) for a state.
-    
+
     Uses the USGS statistics service which provides median and percentile values.
     parameterCd=72019 = depth to water level below land surface
     """
@@ -135,7 +133,6 @@ def fetch_groundwater_stats(state_abbr: str) -> list[dict]:
     )
     rows = fetch_rdb(url)
     return rows or []
-
 
 def fetch_groundwater_current(site_nos: list[str], chunk_size: int = 100) -> list[dict]:
     """
@@ -160,7 +157,6 @@ def fetch_groundwater_current(site_nos: list[str], chunk_size: int = 100) -> lis
 
     return all_results
 
-
 def fetch_streamflow_percentiles_by_state(state_abbr: str) -> list[dict]:
     """
     Fetch current streamflow as percentile of historical record.
@@ -178,15 +174,14 @@ def fetch_streamflow_percentiles_by_state(state_abbr: str) -> list[dict]:
     rows = fetch_rdb(url)
     return rows or []
 
-
 def aggregate_gw_to_county(gw_records: list[dict]) -> dict[str, dict]:
     """
     Aggregate groundwater level anomalies from site-level to county FIPS.
 
     Anomaly scoring:
-        - site has depth_to_water data + historical percentile
-        - if current level is below 25th percentile → stressed
-        - aggregate site-level stress to county median
+    - site has depth_to_water data + historical percentile
+    - if current level is below 25th percentile → stressed
+    - aggregate site-level stress to county median
 
     Returns: {fips: {'usgs_gw_depletion': 0–100, 'usgs_gw_site_count': int}}
     """
@@ -210,6 +205,10 @@ def aggregate_gw_to_county(gw_records: list[dict]) -> dict[str, dict]:
             continue
 
         most_recent = values[-1]
+
+        if not isinstance(most_recent, dict):
+            continue
+
         qualifier = most_recent.get("qualifiers", [])
 
         # USGS qualifiers for groundwater: P = approved, A = provisional
@@ -238,7 +237,6 @@ def aggregate_gw_to_county(gw_records: list[dict]) -> dict[str, dict]:
 
     return results
 
-
 def aggregate_streamflow_to_county(sf_records: list[dict]) -> dict[str, dict]:
     """
     Aggregate streamflow percentile records to county FIPS.
@@ -247,8 +245,8 @@ def aggregate_streamflow_to_county(sf_records: list[dict]) -> dict[str, dict]:
     month_nu, day_nu, mean_va, p50_va (median), p25_va, p75_va
 
     Maps current streamflow vs. median to an inverted stress score:
-        - At or above median → low stress
-        - Below 25th percentile → high stress
+    - At or above median → low stress
+    - Below 25th percentile → high stress
 
     Returns: {fips: {'usgs_streamflow_pct': 0–100 (higher = more stressed)}}
     """
@@ -269,11 +267,10 @@ def aggregate_streamflow_to_county(sf_records: list[dict]) -> dict[str, dict]:
 
     return results
 
-
 def run(states: list[str] | None = None):
     """
     Run USGS ingestion for specified states, or all states if None.
-    
+
     For full national run (~50 states), budget 10–20 minutes of runtime
     and ensure respectful rate limiting is active.
     """
@@ -339,7 +336,6 @@ def run(states: list[str] | None = None):
     print(f"  Saved {len(all_fips)} counties → {out_path}")
     print("Done.\n")
     return out_path
-
 
 if __name__ == "__main__":
     # Run on a subset of high-priority states first for testing
