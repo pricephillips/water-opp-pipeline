@@ -1,0 +1,89 @@
+name: Update USDM Drought Data
+
+on:
+  schedule:
+    # Every Thursday at 6pm UTC (after USDM weekly release)
+    - cron: "0 18 * * 4"
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: 'Override start date (YYYY-MM-DD), defaults to 1 year ago'
+        required: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Compute USDM date range
+        id: dates
+        run: |
+          python3 - <<'PY'
+          import os
+          from datetime import date, timedelta
+          today = date.today()
+          # Most recent Thursday
+          days_back = (today.weekday() - 3) % 7
+          end_date = today - timedelta(days=days_back)
+          start_date = os.environ.get("INPUT_START_DATE") or str(end_date - timedelta(days=365))
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"start_date={start_date}\n")
+              f.write(f"end_date={end_date}\n")
+          print(f"start_date={start_date}  end_date={end_date}")
+          PY
+        env:
+          INPUT_START_DATE: ${{ github.event.inputs.start_date }}
+
+      - name: Download USDM county CSV
+        run: |
+          mkdir -p data/raw
+          curl -fsSL \
+            "https://usdmdataservices.unl.edu/api/CountyStatistics/GetDroughtSeverityStatisticsByAreaPercent?aoi=county&startdate=${{ steps.dates.outputs.start_date }}&enddate=${{ steps.dates.outputs.end_date }}&statisticsType=1&output=json" \
+            -H "Accept: application/json" \
+            -o /tmp/usdm_raw.json
+          python3 - <<'PY'
+          import json, csv
+          with open("/tmp/usdm_raw.json") as f:
+              rows = json.load(f)
+          if not rows:
+              raise SystemExit("USDM API returned 0 rows — aborting to preserve existing CSV")
+          fieldnames = list(rows[0].keys())
+          with open("data/raw/usdm_county_latest.csv", "w", newline="") as f:
+              writer = csv.DictWriter(f, fieldnames=fieldnames)
+              writer.writeheader()
+              writer.writerows(rows)
+          print(f"Wrote {len(rows)} rows to data/raw/usdm_county_latest.csv")
+          PY
+
+      - name: Run drought ingest
+        run: python3 ingest/drought_monitor.py
+
+      - name: Run full pipeline
+        run: python3 build.py --skip-usgs --skip-usbr
+
+      - name: Commit and push updated outputs
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/raw/usdm_county_latest.csv \
+                  data/processed/drought_monitor.csv \
+                  data/output/analysis_summary.json \
+                  data/output/master_analysis.csv \
+                  data/output/water_opp_map.json
+          git diff --cached --quiet && echo "No changes to commit" || \
+            git commit -m "chore: weekly USDM refresh $(date +%Y-%m-%d)" && git push
