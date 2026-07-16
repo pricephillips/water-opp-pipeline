@@ -230,6 +230,70 @@ select:hover, select:focus { border-color: rgba(255,255,255,0.2); outline: none;
   font-size: 11px !important; padding: 5px 8px !important;
   box-shadow: 0 4px 12px rgba(0,0,0,0.4) !important; white-space: nowrap;
 }
+
+/* ── Help Panel ── */
+#help-btn {
+  background: var(--surface-2); border: 1px solid var(--border);
+  color: var(--muted); font-size: 12px; width: 26px; height: 26px;
+  border-radius: 50%; cursor: pointer; display: flex; align-items: center;
+  justify-content: center; font-weight: 700; transition: all 0.15s;
+  flex-shrink: 0; line-height: 1; padding: 0;
+}
+#help-btn:hover { border-color: var(--accent); color: var(--accent); }
+#help-btn.open  { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+
+#help-panel {
+  position: fixed; top: 52px; right: 16px; z-index: 500;
+  width: 320px; max-height: calc(100vh - 70px);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  display: none; flex-direction: column;
+  font-size: 11px;
+}
+#help-panel.open { display: flex; }
+
+#help-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 12px; border-bottom: 1px solid var(--border);
+  font-size: 12px; font-weight: 600; color: var(--text);
+  flex-shrink: 0;
+}
+#help-close {
+  background: none; border: none; color: var(--faint); font-size: 18px;
+  cursor: pointer; line-height: 1; padding: 0 2px;
+  transition: color 0.15s;
+}
+#help-close:hover { color: var(--text); }
+
+#help-body {
+  overflow-y: auto; padding: 10px 12px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+#help-body::-webkit-scrollbar { width: 3px; }
+#help-body::-webkit-scrollbar-thumb { background: var(--faint); border-radius: 2px; }
+
+.help-section-title {
+  font-size: 9px; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--faint); margin-bottom: 4px;
+  border-bottom: 1px solid var(--border); padding-bottom: 3px;
+}
+.help-row {
+  display: flex; gap: 7px; align-items: flex-start;
+  color: var(--muted); line-height: 1.5; margin-bottom: 3px;
+}
+.help-row strong { color: var(--text); min-width: 90px; flex-shrink: 0; }
+.help-chip {
+  display: inline-block; background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 3px;
+  padding: 1px 5px; font-size: 10px; color: var(--text);
+  white-space: nowrap; margin-right: 3px;
+}
+.help-callout {
+  background: var(--accent-dim); border: 1px solid rgba(56,189,248,0.2);
+  border-radius: 4px; padding: 6px 8px; color: var(--muted); line-height: 1.5;
+}
+
 </style>
 </head>
 <body>
@@ -262,6 +326,63 @@ select:hover, select:focus { border-color: rgba(255,255,255,0.2); outline: none;
   <div id="freshness-pill">
     <div id="freshness-dot"></div>
     <span id="freshness-text">Loading…</span>
+  
+  <button id="help-btn" onclick="toggleHelp()" title="Map guide &amp; glossary">?</button>
+</div>
+</div>
+
+<div id="help-panel">
+  <div id="help-panel-header">
+    <span>📖 Map Guide &amp; Glossary</span>
+    <button id="help-close" onclick="toggleHelp()" title="Close">×</button>
+  </div>
+  <div id="help-body">
+
+    <div>
+      <div class="help-section-title">What this map shows</div>
+      <div class="help-callout">
+        Each county is scored on two axes: <strong style="color:var(--accent)">Water Tension Index (WTI)</strong> — how stressed local water supply is — and <strong style="color:var(--accent)">Opposition Rate</strong> — how many development opposition incidents have been recorded per 100k residents. The bivariate color encodes both simultaneously.
+      </div>
+    </div>
+
+    <div>
+      <div class="help-section-title">Layer selector</div>
+      <div class="help-row"><strong>Bivariate</strong>Default view. Color encodes both WTI and opposition rate using the 3×3 grid in the legend below the sidebar.</div>
+      <div class="help-row"><strong>Water Tension (WTI)</strong>Composite 0–100 score from WRI Aqueduct baseline stress, USGS groundwater/streamflow, USDM drought monitor, and USBR reservoir storage.</div>
+      <div class="help-row"><strong>Opposition Rate</strong>Recorded development opposition incidents per 100,000 residents.</div>
+      <div class="help-row"><strong>Model Residuals</strong>Where actual opposition diverges from WTI predictions. Red = more opposition than water stress explains — other drivers (politics, land use) may be at play. Blue = suppressed opposition despite high stress.</div>
+      <div class="help-row"><strong>Supply / Demand / Seasonal</strong>Individual sub-components of the WTI score.</div>
+    </div>
+
+    <div>
+      <div class="help-section-title">Highlight filters</div>
+      <div class="help-row"><span class="help-chip" style="color:#f87171;border-color:#f8717144">Water-driven</span>High WTI + high opposition — water stress likely a primary driver.</div>
+      <div class="help-row"><span class="help-chip" style="color:#60a5fa;border-color:#60a5fa44">Latent risk</span>High WTI but little recorded opposition yet — early-warning counties to watch.</div>
+      <div class="help-row"><span class="help-chip" style="color:#c084fc;border-color:#c084fc44">Other drivers</span>Low WTI but high opposition — political or land-use factors may dominate.</div>
+      <div style="color:var(--faint);font-size:10px;margin-top:2px;">Multiple filters can be active simultaneously. Click an active filter to deactivate it.</div>
+    </div>
+
+    <div>
+      <div class="help-section-title">County detail panel (click any county)</div>
+      <div class="help-row"><strong>WTI breakdown</strong>Supply deficit, demand pressure, and seasonal pinch sub-scores, each 0–100.</div>
+      <div class="help-row"><strong>Opposition detail</strong>Total incidents, water-flagged count, and normalized rates per 100k.</div>
+      <div class="help-row"><strong>M2 residual</strong>Standardized deviation from the regression model. &gt;+1.5 = non-water drivers dominant; &lt;−1.5 = opposition suppressed despite stress.</div>
+      <div class="help-row"><strong>Controls</strong>GOP vote share (2024), water law doctrine (prior appropriation vs. riparian), and agricultural water share — covariates held constant in the model.</div>
+      <div class="help-row"><strong>Data completeness</strong>% of WTI sources present for this county. &lt;50% means the WTI is estimated from fewer inputs.</div>
+    </div>
+
+    <div>
+      <div class="help-section-title">Header indicators</div>
+      <div class="help-row"><span class="help-chip" style="color:#4ade80">● live</span>Full pipeline output loaded (WRI + USGS + USDM + USBR all active).</div>
+      <div class="help-row"><span class="help-chip" style="color:#fbbf24">● seed</span>Partial data — live USDM drought feed only; static sources not yet loaded.</div>
+      <div class="help-row"><strong>Sources bar</strong>Four segments below the filter row — green = source active, yellow = estimated/seed data.</div>
+      <div class="help-row"><strong>Auto-refresh</strong>Syncs to the USDM Tuesday release schedule and reloads data automatically when enabled.</div>
+    </div>
+
+    <div style="color:var(--faint);font-size:10px;line-height:1.6;border-top:1px solid var(--border);padding-top:6px;">
+      Sources: WRI Aqueduct 4.0 · USGS NWIS · USDM drought monitor · USBR reservoir storage · THG opposition database
+    </div>
+
   </div>
 </div>
 
@@ -852,6 +973,21 @@ function toggleHL(type) {
   document.getElementById(`btn-${id}`).classList.toggle('active', highlights[type]);
   if (geojsonLayer) geojsonLayer.setStyle(countyStyle);
 }
+
+
+// ── Help panel ──────────────────────────────────────────────────────
+function toggleHelp() {
+  const panel = document.getElementById('help-panel');
+  const btn   = document.getElementById('help-btn');
+  const open  = panel.classList.toggle('open');
+  btn.classList.toggle('open', open);
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.getElementById('help-panel').classList.remove('open');
+    document.getElementById('help-btn').classList.remove('open');
+  }
+});
 
 loadData();
 </script>
