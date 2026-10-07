@@ -27,10 +27,9 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = ROOT / "data" / "processed"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-OPPOSITION_URL = (
-    "https://raw.githubusercontent.com/pricephillips/data-center-map"
-    "/main/master_opposition.csv"
-)
+# data-center-map's public site (Cloudflare Pages). The repository is going
+# private, so its raw.githubusercontent.com URL will stop answering.
+OPPOSITION_URL = "https://data-center-map.pages.dev/master_opposition.csv"
 ELECTION_URL = (
     "https://raw.githubusercontent.com/tonmcg/US_County_Level_Election_Results_08-24"
     "/master/2024_US_County_Level_Presidential_Results.csv"
