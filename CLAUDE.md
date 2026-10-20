@@ -2,7 +2,7 @@
 
 ## Written text: the humanizer pass
 
-Every piece of prose a session writes that a client, Price or the public could read gets a humanizer pass before it is sent, committed or published: invoke the `humanizer` skill (`/humanizer`) on it. The same rule is in every Hawthorn Intelligence repository (hawthorn-portal, data-centers, renewable-opposition, water-opp-pipeline, weekly-reports). It covers:
+Every piece of prose a session writes that a client, Price or the public could read gets a humanizer pass before it is sent, committed or published: invoke the `humanizer` skill (`/humanizer`) on it. The same rule is in every Hawthorn Intelligence repository. It covers:
 
 - Reports: client reports, case studies, location reports, briefs, scorecards, updates, and written reports for Price.
 - End-of-pass reports: the closing reply that ends a pass or a session's work (files changed, commands, PR links, decisions for Price).
