@@ -123,6 +123,10 @@ jobs:
 
       - name: Run full pipeline
         run: python3 build.py --skip-usgs --skip-usbr
+        env:
+          # data-centers' site is behind Cloudflare Access (2026-10-21): the Access service token for master_opposition.csv.
+          SITE_ACCESS_CLIENT_ID: ${{ secrets.SITE_ACCESS_CLIENT_ID }}
+          SITE_ACCESS_CLIENT_SECRET: ${{ secrets.SITE_ACCESS_CLIENT_SECRET }}
 
       - name: Commit and push updated outputs
         run: |
