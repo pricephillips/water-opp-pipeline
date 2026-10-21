@@ -14,11 +14,19 @@ Key decisions:
     - Severity: 1 = standard, 2 = high-severity (weighted ×2 in score).
     - Rows with national/multi-state scope, no county, or missing state excluded.
 
+    - Source (2026-10-21): data-centers' site is behind Cloudflare Access, so the
+      download sends an Access service token (SITE_ACCESS_CLIENT_ID and
+      SITE_ACCESS_CLIENT_SECRET, GitHub Actions secrets). OPPOSITION_FILE reads a
+      local copy instead. A download that fails, or returns something that is not
+      master_opposition.csv (the sign-in page), keeps last week's county counts
+      from data/output/master_analysis.csv rather than writing zeros.
+
 Outputs: data/processed/opposition_by_county.csv
 """
 
 import csv
 import io
+import os
 import urllib.request
 from collections import defaultdict
 from pathlib import Path
@@ -27,9 +35,11 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = ROOT / "data" / "processed"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# data-center-map's public site (Cloudflare Pages). The repository is going
-# private, so its raw.githubusercontent.com URL will stop answering.
-OPPOSITION_URL = "https://data-center-map.pages.dev/master_opposition.csv"
+# data-centers' site (Cloudflare Pages, behind Cloudflare Access since
+# 2026-10-21; the old data-center-map.pages.dev address redirects to it).
+OPPOSITION_URL = "https://thg-intelligence.pages.dev/master_opposition.csv"
+OPPOSITION_COLUMNS = ("State", "County", "Scope", "Severity", "Issue Category")
+PREVIOUS = ROOT / "data" / "output" / "master_analysis.csv"
 ELECTION_URL = (
     "https://raw.githubusercontent.com/tonmcg/US_County_Level_Election_Results_08-24"
     "/master/2024_US_County_Level_Presidential_Results.csv"
@@ -65,6 +75,60 @@ def fetch_csv(url: str) -> list[dict]:
     with urllib.request.urlopen(req, timeout=30) as r:
         content = r.read().decode("utf-8", errors="replace")
     return list(csv.DictReader(io.StringIO(content)))
+
+
+def fetch_opposition() -> list[dict] | None:
+    """master_opposition.csv rows, or None (with the reason printed) when the
+    file could not be read or is not master_opposition.csv."""
+    path = os.environ.get("OPPOSITION_FILE", "").strip()
+    try:
+        if path:
+            content = Path(path).expanduser().read_text(encoding="utf-8", errors="replace")
+        else:
+            headers = {"User-Agent": "water-opp-pipeline/2.0"}
+            cid = os.environ.get("SITE_ACCESS_CLIENT_ID", "").strip()
+            secret = os.environ.get("SITE_ACCESS_CLIENT_SECRET", "").strip()
+            if cid and secret:
+                headers["CF-Access-Client-Id"] = cid
+                headers["CF-Access-Client-Secret"] = secret
+            else:
+                print("  No SITE_ACCESS_CLIENT_ID / SITE_ACCESS_CLIENT_SECRET: the site will ask for a sign-in")
+            req = urllib.request.Request(OPPOSITION_URL, headers=headers)
+            with urllib.request.urlopen(req, timeout=60) as r:
+                content = r.read().decode("utf-8", errors="replace")
+    except Exception as e:  # network, HTTP or file errors
+        print(f"  Could not read master_opposition.csv: {e}")
+        return None
+    reader = csv.DictReader(io.StringIO(content))
+    missing = [c for c in OPPOSITION_COLUMNS if c not in (reader.fieldnames or [])]
+    if missing:
+        print(f"  Not master_opposition.csv (missing {', '.join(missing)}; a sign-in page?)")
+        return None
+    rows = list(reader)
+    return rows or None
+
+
+def previous_counts() -> dict[str, dict]:
+    """Last week's county counts, read back from the committed master_analysis.csv."""
+    if not PREVIOUS.exists():
+        return {}
+    out: dict[str, dict] = {}
+    with open(PREVIOUS, encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            try:
+                n = int(float(row.get("opp_count") or 0))
+                pop = float(row.get("pop_estimate") or 0)
+                sev = float(row.get("opp_sev_rate_per_100k") or 0) * pop / 100000
+            except ValueError:
+                continue
+            if n > 0:
+                out[row["fips"].zfill(5)] = {
+                    "opp_count": n,
+                    "opp_water_count": int(float(row.get("opp_water_count") or 0)),
+                    "opp_water_pct": row.get("opp_water_pct") or 0.0,
+                    "opp_severity_score": round(sev, 1),
+                }
+    return out
 
 
 # ── FIPS lookup ───────────────────────────────────────────────────────────────
@@ -195,16 +259,26 @@ def run() -> Path:
     print("=== Opposition Data Ingestion ===")
 
     print("  Fetching master_opposition.csv …")
-    opp_rows = fetch_csv(OPPOSITION_URL)
-    print(f"  {len(opp_rows)} rows loaded")
+    opp_rows = fetch_opposition()
+    if opp_rows is None:
+        county_opp = previous_counts()
+        if not county_opp:
+            raise SystemExit("master_opposition.csv could not be read and there are no earlier counts to keep.")
+        note = (f"Opposition counts NOT refreshed: kept last week's counts for {len(county_opp)} counties "
+                f"from {PREVIOUS.relative_to(ROOT)}")
+        print(f"  {note}")
+        if os.environ.get("GITHUB_ACTIONS"):
+            print(f"::warning title=Opposition data not refreshed::{note}")
+    else:
+        print(f"  {len(opp_rows)} rows loaded")
 
-    print("  Fetching county FIPS lookup …")
-    election_rows = fetch_csv(ELECTION_URL)
-    fips_lookup   = build_fips_lookup(election_rows)
-    print(f"  {len(fips_lookup)} name→FIPS mappings built")
+        print("  Fetching county FIPS lookup …")
+        election_rows = fetch_csv(ELECTION_URL)
+        fips_lookup   = build_fips_lookup(election_rows)
+        print(f"  {len(fips_lookup)} name→FIPS mappings built")
 
-    print("  Aggregating …")
-    county_opp = aggregate(opp_rows, fips_lookup)
+        print("  Aggregating …")
+        county_opp = aggregate(opp_rows, fips_lookup)
 
     water_counties = sum(1 for d in county_opp.values() if d["opp_water_count"] > 0)
     print(f"  {len(county_opp)} counties with ≥1 incident  "
