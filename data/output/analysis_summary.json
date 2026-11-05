@@ -1,34 +1,34 @@
 {
-  "generated": "2026-10-29",
+  "generated": "2026-11-05",
   "n_counties": 3120,
   "n_opp_counties": 896,
   "n_water_opp_counties": 350,
   "correlations": {
-    "r_wti_opp_rate": -0.0032,
-    "r_wti_water_opp_rate": 0.01,
+    "r_wti_opp_rate": 0.0025,
+    "r_wti_water_opp_rate": 0.016,
     "r_gop_opp_rate": 0.0344,
-    "partial_r_wti_opp_controlling_gop": -0.0085
+    "partial_r_wti_opp_controlling_gop": -0.0028
   },
   "models": {
     "M1": {
-      "beta_wti": -0.0032,
+      "beta_wti": 0.0025,
       "r_squared": 0.0
     },
     "M2": {
-      "beta_wti": -0.0239,
-      "r_squared": 0.0035,
-      "delta_r2": 0.0003
+      "beta_wti": -0.0116,
+      "r_squared": 0.0032,
+      "delta_r2": 0.0
     },
     "M3": {
-      "beta_wti": 0.0506,
-      "r_squared": 0.0027
+      "beta_wti": 0.0564,
+      "r_squared": 0.0031
     }
   },
   "quadrant_counts": {
-    "quiet": 1656,
-    "other_drivers": 732,
-    "latent_risk": 568,
-    "water_driven": 164
+    "quiet": 1698,
+    "other_drivers": 740,
+    "latent_risk": 526,
+    "water_driven": 156
   },
   "interpretation": {
     "wti_is_causal": false,
